@@ -1,0 +1,666 @@
+function [Xopt,FXopt,details] = LM_X(funct_name,lim,Parameters)
+%% Levenberg-Marquardt (least squares)
+% David Matajira Rueda, B.Eng, M.Eng, D.Eng(c)
+% david.matajira@ugto.mx
+% Divisi?n de Ingenier?as Campus Irapuato-Salamanca - DICIS
+% Universidad de Guanajuato - UG
+% Salamanca - Guanajuato - M?xico
+% February - 2019 - Last revision: October - 2019
+% Functions: None
+% Subfunctions: Gradient, Gradient_Modified, Hessian
+% Required *.m-files: None
+% Required *.mat-files: None
+
+% Advisors: Ph.D Carlos Rodrigo Correa Cely - Ph.D Juan Gabriel Avi?a Cervantes
+%           Ph.D Jorge Mario Cruz Duarte
+
+%% Global variables and others
+global noise_signal sis delta_0 % Pop0  Back ln bg ms lw met fun colors rep sol 
+
+%% This is used just to test the code
+% sis  = 1   %Central derivative
+% sis  = 2   %Forward derivative
+% sis  = 3   %Backward derivative
+% sis  = 1   %Special derivative
+
+% noise_signal = 1    %Without SNR = 1 - 10dB SNR = 2 - 20dB SNR = 3 - 30dB SNR = 4
+% delta_0 = 1e-3      %Precision to Gradient function
+
+%% LaTex enviroment
+% Back    = 1;   % Back - Background color: White: 0 - Black: 1
+% LaTex_Script
+
+%% Warnings and errors
+warning off
+
+%% Variables tests
+
+
+%% Constants tests
+
+
+%% Engineering format
+format longeng
+
+% C    = 1; %Set color option (C=0 White - C=1 Black)
+
+%% Function conversion
+% if ischar(funct_name) == 1
+%      funct_name      = str2func(funct_name);
+% else
+%      funct_name      = funct_name;
+% end
+
+%% Algorithm parameters initialization
+N_dim     = size(lim,1);
+
+minval    = lim(:,1);    %Lower limit
+maxval    = lim(:,2);    %Upper limit
+
+p    = minval + (maxval - minval).*rand(N_dim,1);
+
+if nargin < 3
+     alpha     = 1e3;         %Method criterion
+     c1        = 0.3500;      %Inertia number 1 0.25
+     c2        = 2.8571;      %Inertia number 2 4.00
+     Max_gen   = 1000;        %Maximum number of generations
+     
+     Tol       = 5;           %Precision to stop criterion
+     Msat      = 100;         %Number of generations without a significant change of the optimal value
+     Epsilon   = 1e-3;        %User precision
+     
+     order     = 3;
+     
+else
+     alpha     = Parameters.alpha;
+     c1        = Parameters.c1;
+     c2        = Parameters.c2;
+     
+     Max_gen   = Parameters.Max_gen;
+     Tol       = Parameters.Tol;
+     Msat      = Parameters.Msat;
+     Epsilon   = Parameters.Epsilon;
+     
+     order     = Parameters.order;
+     
+end
+
+%% Initial time and toplot
+toplot    = [];
+tic
+
+%% Select LM-type
+if sis == 4 %sis == 1 || sis == 2 || sis == 3
+     
+     %% Population plot
+     % plot(xpop,'LineStyle','None','Marker','*','MarkerSize',2.5)
+     %
+     % xlabel('$Agents$')
+     % set(gca,'Xlim',[0,xpop]);
+     % % set(gca,'XTick',())
+     % set(gca,'XMinorGrid','On');
+     % set(gca,'XMinorTick','On');
+     %
+     % ylabel('$Limits$')
+     % set(gca,'Ylim',[min(minval),max(maxval)]);
+     % % set(gca,'YTick',());
+     % set(gca,'YMinorGrid','On');
+     % set(gca,'YMinorTick','On');
+     %
+     % print(['Population_LM_',num2str(xpop),'agents_',num2str(N_dim),'dimensions'],'-depsc','-r750')
+     % print(['Population_LM_',num2str(xpop),'agents_',num2str(N_dim),'dimensions'],'-dpng','-r750')
+     % savefig(['Population_LM_',num2str(xpop),'agents_',num2str(N_dim),'dimensions','.fig'])
+     
+     generation     = 1;
+     
+     %% Function evaluation
+     FXoptp    = Gradient_LS(funct_name,p,delta_0)
+     
+     % if round(FXoptp,-log10(Epsilon)) == 0
+     %     Xopt        = p;
+     %     FXopt       = funct_name(p');
+     % else
+     
+     %% Set auxiliar variables
+     FXoptc    = 0;
+     Xoptc     = 0;
+     msatc1    = 0;
+     msatc2    = 0;
+     msatc3    = 0;
+     msatc4    = 0;
+     summ      = 0;
+     sums      = 0;
+     
+     iteration      = 1;
+     
+     Xopt_p_i(1,:)  = p';
+     
+     load('data.mat');
+     
+     G_d  = data.G_d;
+     
+     ET_i      = data.T_i_P_N(:,noise_signal);
+     
+     n    = length(G_d(:,1));
+     
+     for i = 1:n
+          TT_i(i,1)   = funct_name(p',G_d(i,1));
+          FXopt_p_i(iteration,:)      = mean(TT_i(i,1));
+     end
+     
+     %      FXoptp    = sum(Gradient_LS(funct_name,p,delta_0),'All');
+     FXoptp    = mean(Gradient_LS(funct_name,p,delta_0),'All');
+     
+     %% Main processing loop
+     while (generation <= Max_gen) %&& (FXoptp > Epsilon) %&& msatc1 < 0.5*Msat && msatc2 < Msat && msatc3 < 1.5*Msat && msatc4 < 2.0*Msat
+          
+          iteration   = iteration + 1;
+          
+          Xopt(:,generation)       = p + (((Gradient_LS(funct_name,p,delta_0))'*(Gradient_LS(funct_name,p,delta_0))) + alpha*diag(((Gradient_LS(funct_name,p,delta_0))'*(Gradient_LS(funct_name,p,delta_0)))))\(Gradient_LS(funct_name,p,delta_0))'*(ET_i - TT_i);
+          
+          for i = 1:n
+               FXopt_n      = funct_name(Xopt(:,generation)',G_d(i,1));
+               FXopt_o      = funct_name(p',G_d(i,1));
+          end
+          
+          %           FXopt(:,generation)      = sum(FXopt_n(:,:),'All');
+          FXopt(:,generation)      = mean(FXopt_n(:,:),'All');
+          
+          %           FXoptp    = sum(Gradient_LS(funct_name,Xopt(:,generation),delta_0),'All');
+          FXoptp    = mean(Gradient_LS(funct_name,Xopt(:,generation),delta_0),'All');
+          
+          alpha     = (c1*alpha)*numel(find(FXopt_n < FXopt_o)) + (c2*alpha)*numel(find(FXopt_n > FXopt_o));
+          
+          p    = Xopt(:,generation);
+          
+          for i = 1:n
+               TT_i(i,1)   = funct_name(p',G_d(i,1));
+          end
+          
+          
+          %% Current values Optimum
+          Xopt_p_i(iteration,:)    = Xopt(:,generation);
+          FXopt_p_i(iteration,:)   = FXopt(:,generation);
+          
+          %% Statistical information
+          summ      = summ + sum(mean(FXopt(:,generation)));
+          sums      = sums + sum(mean(FXopt(:,generation)^2));
+          currm     = summ/generation;                           %Current mean
+          currs     = sqrt(sums/generation - currm^2);           %Current standard deviation
+          
+          cur = abs(FXopt(:,generation) - currm);
+          
+          %% Stopping criteria
+          
+          %First
+          if (abs(FXopt(:,generation) - currm) <= (Tol*currs)) %&& (FXopt == FXoptc)
+               msatc1 = msatc1 + 1;
+          else
+               msatc1 = 0;
+          end
+          
+          %Second
+          if (abs(FXopt(:,generation) - currm) <= Epsilon)
+               msatc2 = msatc2 + 1;
+          else
+               msatc2 = 0;
+          end
+          
+          %Third
+          if (abs(FXopt(:,generation) - FXoptc) <= Epsilon^2)
+               msatc3 = msatc3 + 1;
+          else
+               msatc3 = 0;
+          end
+          
+          %Fourth
+          if (max(abs((Xopt(:,generation) - Xoptc)./Xopt)) <= Epsilon^3)
+               msatc4 = msatc4 + 1;
+          else
+               msatc4 = 0;
+          end
+          
+          Xoptc     = Xopt(:,generation);
+          FXoptc    = FXopt(:,generation);
+          
+          %Stagnation
+          if generation <= Max_gen
+               outmsg = 1;
+          else
+               outmsg = 0;
+          end
+          
+          %% Final time and toplot
+          t = toc;
+          
+          details = struct('time',t,'fevs',generation,'steps',iteration,'outmsg',outmsg,'favg',currm,'fstd',currs,'Xopt_p_i',Xopt_p_i(:,1:N_dim),'FXopt_p_i',FXopt_p_i(:,1),'msat',[msatc1,msatc2,msatc3,msatc4]);
+          
+          %      toplot = [toplot; [iteration,FXopt,Xopt,currm,currs]];
+          
+          %% Increase the generation
+          generation     = generation + 1;
+          
+          %% Save session
+          % save LMOA.mat
+          
+     end
+     
+     Xopt    = Xopt(:,generation-1);
+     FXopt   = FXopt(:,generation-1);
+     
+     % end
+     
+     return
+     
+else
+     
+     generation     = 1;
+     
+     %% Function evaluation
+     FXoptp    = Gradient_LS(funct_name,p,delta_0);
+     
+     % if round(FXoptp,-log10(Epsilon)) == 0
+     %     Xopt        = p;
+     %     FXopt       = funct_name(p');
+     % else
+     
+     %% Set auxiliar variables
+     FXoptc    = 0;
+     Xoptc     = 0;
+     msatc1    = 0;
+     msatc2    = 0;
+     msatc3    = 0;
+     msatc4    = 0;
+     summ      = 0;
+     sums      = 0;
+     
+     iteration      = 1;
+     
+     Xopt_p_i(1,:)  = p;
+     
+     FXopt_p_i(1,:)      = funct_name(Xopt_p_i(1,:))
+     
+     %% Main processing loop
+     while (generation < Max_gen/10) %&& msatc1 < 0.5*Msat && msatc2 < Msat && msatc3 < 1.5*Msat && msatc4 < 2.0*Msat
+          
+          iteration   = iteration + 1;
+          
+          Xopt(:,generation)       = p + (((Gradient_LS(funct_name,p,delta_0))'*(Gradient_LS(funct_name,p,delta_0))) + alpha*diag(((Gradient_LS(funct_name,p,delta_0))'*(Gradient_LS(funct_name,p,delta_0)))))\(Gradient_LS(funct_name,p,delta_0))';
+          
+          FXopt(:,generation)      = funct_name(Xopt(:,generation));
+          
+          FXoptp    = Gradient_LS(funct_name,Xopt(:,generation),delta_0);
+          
+          alpha     = (c1*alpha)*(FXopt(:,generation) < funct_name(p)) + (c2*alpha)*(FXopt(:,generation) > funct_name(p))
+          
+          p    = Xopt(:,generation);
+          
+          %% Current values Optimum
+          Xopt_p_i(iteration,:)    = Xopt(:,generation)
+          FXopt_p_i(iteration,:)   = funct_name(Xopt(:,generation))
+          
+          %% Statistical information
+          summ      = summ + FXopt(:,generation);
+          sums      = sums + FXopt(:,generation)^2;
+          currm     = summ/generation;                      % Current mean
+          currs     = sqrt(sums/generation - currm^2);      % Current standard deviation
+          
+          cur = abs(FXopt(:,generation) - currm);
+          
+          %% Stopping criteria
+          
+          %First
+          if (abs(FXopt(:,generation) - currm) <= (Tol*currs)) %&& (FXopt == FXoptc)
+               msatc1 = msatc1 + 1;
+          else
+               msatc1 = 0;
+          end
+          
+          %Second
+          if (abs(FXopt(:,generation) - currm) <= Epsilon)
+               msatc2 = msatc2 + 1;
+          else
+               msatc2 = 0;
+          end
+          
+          %Third
+          if (abs(FXopt(:,generation) - FXoptc) <= Epsilon^2)
+               msatc3 = msatc3 + 1;
+          else
+               msatc3 = 0;
+          end
+          
+          %Fourth
+          if (max(abs((Xopt(:,generation) - Xoptc)./Xopt(:,generation))) <= Epsilon^3)
+               msatc4 = msatc4 + 1;
+          else
+               msatc4 = 0;
+          end
+          
+          Xoptc     = Xopt(:,generation);
+          FXoptc    = FXopt(:,generation);
+          
+          %Stagnation
+          if generation <= Max_gen
+               outmsg = 1;
+          else
+               outmsg = 0;
+          end
+          
+          %% Final time and toplot
+          t = toc;
+          
+          details = struct('time',t,'fevs',generation,'steps',iteration,'outmsg',outmsg,'favg',currm,'fstd',currs,'Xopt_p_i',Xopt_p_i(:,1:N_dim),'FXopt_p_i',FXopt_p_i(:,1),'msat',[msatc1,msatc2,msatc3,msatc4]);
+          
+          %      toplot = [toplot; [iteration,FXopt,Xopt,currm,currs]];
+          
+          %% Increase the generation
+          generation     = generation + 1;
+          
+          %% Save session
+          % save LMOA.mat
+          
+     end
+     
+     Xopt    = Xopt(:,generation-1);
+     FXopt   = FXopt(:,generation-1);
+     
+     return
+     
+end
+
+end
+
+%%
+function [Grad_Mod] = Gradient_LS(f,p,delta)
+%% Gradient_LS(f,p,delta)
+% f: Handle function to analyze (f = @(x))
+% p: Evaluating point ([p1,p2,p3,...,pn])
+% delta: Derivative approximation precision
+% David Matajira Rueda, B.Eng, M.Eng, D.Eng(c)
+% david.matajira@ugto.mx
+% Divisi?n de Ingenier?as Campus Irapuato-Salamanca - DICIS
+% Universidad de Guanajuato - UG
+% Salamanca - Guanajuato - M?xico
+% February - 2019 - Last revision: November - 2019
+% Functions: None
+% Subfunctions: None
+% Required *.m-files: None
+% Required *.mat-files: None
+
+% Advisors: Ph.D Carlos Rodrigo Correa Cely - Ph.D Juan Gabriel Avi?a Cervantes
+%           Ph.D Jorge Mario Cruz Duarte
+
+%%
+global sis noise_signal % Back colors 
+
+% Back      = 1;      % Back - Background color: White: 0 - Black: 1
+
+%%
+%LaTex Enviroment
+
+% LaTex_Script
+
+format longeng
+
+%%
+if nargin == 2
+     delta     = 1e-5;
+elseif nargin == 1
+     disp('There is not evaluating point!')
+elseif nargin == 0
+     disp('There is not function!')
+end
+
+%%
+
+n    = size(p,1);
+
+load('data.mat');
+
+G_d  = data.G_d;
+
+ET_i      = data.T_i_P_N(:,noise_signal);
+
+o    = length(G_d(:,1));
+
+base      = zeros(n,1);
+
+if sis == 0    %Central derivative (Without least square)
+     for m = 1:n
+          base(m,1) = delta;
+          Grad_Mod(m,1) = (f((p + base)') - f((p - base)'))/(2*delta);
+          base(m,1) = 0;
+     end
+elseif sis == 2     %Forward derivative (With least squares)
+     for m = 1:n
+          for l = 1:o
+               base(m,1)      = delta;
+               p01  = f((p + base)',G_d(l,1));
+               p02  = f(p',G_d(l,1));
+               Grad_Mod(l,m)  = ((f((p + base)',G_d(l,1)) - f(p',G_d(l,1)))/(delta));
+               base(m,1)      = 0;
+          end
+     end
+elseif sis == 3     %Backward derivative (With least squares)
+     for m = 1:n
+          for l = 1:o
+               base(m,1)      = delta;
+               p01  = f(p',G_d(l,1));
+               p02  = f((p - base)',G_d(l,1));
+               Grad_Mod(l,m)  = ((f(p',G_d(l,1)) - f((p - base)',G_d(l,1)))/(delta));
+               base(m,1)      = 0;
+          end
+     end
+elseif sis == 4     %Special derivative (With least squares)
+     delta = delta*ones(o,1);
+     p_temporal = p
+     Grad_Mod = zeros(o,n);
+     del = zeros(n,1);
+     for m = 1:n
+          m
+
+          del(m,1) = delta(m,1)*(1 + abs(p(m,1)))
+          p(m,1) = p_temporal(m,1) + del(m,1)
+          if del(m,1) ~= 0
+               for l = 1:o
+                    TT_i_0(l,1)   = f(p',G_d(l,1))
+                    ET_i_0 = ET_i;
+               end
+               if delta(m,1) < 0
+                    Grad_Mod(:,m) = (TT_i_0 - ET_i_0)./del(m,1)
+               else
+                    p(m,1) = p_temporal(m,1) - del(m,1)
+                    for l = 1:o
+                         TT_i_1(l,1)   = f(p',G_d(l,1))
+                         ET_i_0 = ET_i;
+                    end
+                    Grad_Mod(:,m) = (TT_i_0 - TT_i_1)./(2.*del(m,1))
+               end
+               p(m,1) = p_temporal(m,1)
+          end
+     end
+else      %Central derivative (With least squares)
+     for m = 1:n
+          for l = 1:o
+               base(m,1)      = delta;
+               p01  = f((p + base)',G_d(l,1));
+               p02  = f((p - base)',G_d(l,1));
+               Grad_Mod(l,m)  = ((f((p + base)',G_d(l,1)) - f((p - base)',G_d(l,1)))/(2*delta));
+               base(m,1)      = 0;
+          end
+     end
+end
+end
+
+%%
+function [Grad] = Gradient(f,p,delta)
+%% Gradient(f,p,delta)
+% f: Handle function to analyze (f = @(x))
+% p: Evaluating point ([p1,p2,p3,...,pn])
+% delta: Derivative approximation precision
+% David Matajira Rueda, BEng, MEng, DEng(c)
+% david.matajira@ugto.mx
+% Divisi?n de Ingenier?as Campus Irapuato-Salamanca - DICIS
+% Universidad de Guanajuato - UG
+% Salamanca - Guanajuato - M?xico
+% February - 2019
+
+%%
+% global Back colors
+
+% Back    = 1;   % Back - Background color: White: 0 - Black: 1
+
+%%
+%LaTex Enviroment
+
+% LaTex_Script
+
+format longeng
+
+%%
+if nargin == 2
+     delta = 1e-5;
+elseif nargin == 1
+     disp('There is not evaluating point!')
+elseif nargin == 0
+     disp('There is not function!')
+end
+
+%%
+
+n = numel(p);
+
+base = zeros(n,1);
+
+for m = 1:n
+     base(m,1) = delta;
+     Grad(m,1) = (f((p + base)') - f((p - base)'))/(2*delta);
+     base(m,1) = 0;
+     %     base = zeros(n,1);
+end
+
+end
+
+%%
+
+function [Grad_Mod] = Gradient_Modified(f,p,delta)
+%% Gradient_Modified(f,p,delta)
+% f: Handle function to analyze (f = @(x))
+% p: Evaluating point ([p1,p2,p3,...,pn])
+% delta: Derivative approximation precision
+% David Matajira Rueda, BEng, MEng, DEng(c)
+% david.matajira@ugto.mx
+% Divisi?n de Ingenier?as Campus Irapuato-Salamanca - DICIS
+% Universidad de Guanajuato - UG
+% Salamanca - Guanajuato - M?xico
+% February - 2019
+
+%%
+% global Back colors
+
+% Back    = 1;   % Back - Background color: White: 0 - Black: 1
+
+%%
+%LaTex Enviroment
+
+% LaTex_Script
+
+format longeng
+
+%%
+if nargin == 2
+     delta = 1e-5;
+elseif nargin == 1
+     disp('There is not evaluating point!')
+elseif nargin == 0
+     disp('There is not function!')
+end
+
+%%
+
+n = numel(p);
+
+base = zeros(n,1);
+
+for m = 1:n
+     base(m,1) = delta;
+     Grad_Mod(:,m) = (f(p + base) - f(p - base))/(2*delta);
+     base(m,1) = 0;
+end
+
+end
+
+
+%%
+function [Hes] = Hessian(f,p,delta)
+%% Hessian(f,p,delta)
+% f: Handle function to analyze (f = @(x))
+% p: Evaluating point ([p1,p2,p3,...,pn])
+% delta: Derivative approximation precision
+% David Matajira Rueda, BEng, MEng, DEng(c)
+% david.matajira@ugto.mx
+% Divisi?n de Ingenier?as Campus Irapuato-Salamanca - DICIS
+% Universidad de Guanajuato - UG
+% Salamanca - Guanajuato - M?xico
+% February - 2019
+
+%%
+% global Back colors
+
+% Back    = 1;   % Back - Background color: White: 0 - Black: 1
+
+%%
+%LaTex Enviroment
+
+% LaTex_Script
+
+format longeng
+
+%%
+if nargin == 2
+     delta = 1e-5;
+elseif nargin == 1
+     disp('There is not evaluating point!')
+elseif nargin == 0
+     disp('There is not function!')
+end
+
+%%
+
+o = numel(p);
+
+base1 = zeros(o,1);
+base2 = zeros(o,1);
+
+for m = 1:o
+     for n = 1:o
+          base1(m,1) = delta;
+          base2(n,1) = delta;
+          Hes(m,n) = (f((p + base1 + base2)') - f((p + base1 - base2)') - f((p - base1 + base2)') + f((p - base1 - base2)'))/(4*(delta^2));
+          base1(m,1) = 0;
+          base2(n,1) = 0;
+     end
+     
+end
+
+end
+
+%%
+%Parameters
+
+%Parameters = struct('alpha',1e3,'c1',0.3500,'c2',2.8571,'Max_gen',1000,'Tol',5,'Msat',100,'Epsilon',1e-3,'order',3);
+
+%%
+%**************************************************************************************************
+%Reference:  
+%            
+%            
+%
+%**************************************************************************************************
+
+%Any observations or/and suggestions for improvement of this code send to
+%David Matajira at this email address: david.matajira@ugto.mx
+%Your contribution to improving this code will be acknowledged in
+%revision section in this script and in the MatLab web page of the
+%File Exchange - MATLAB Central - MathWorks
