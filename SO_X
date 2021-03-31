@@ -1,0 +1,274 @@
+%% Spiral Optimization Algorithm (SOA)
+% Jorge Mario Cruz Duarte, B.Eng, M.Sc, D.Eng
+% Universidad Industrial de Santander - UIS
+% Escuela de Ingenierias Electrica, Electronica y de Telecomunicaciones
+% Bucaramanga - Santander - Colombia
+% October - 2012 - Last revision: October - 2019
+% Functions: None
+% Subfunctions: None
+% Required *.m-files: None
+% Required *.mat-files: Parameters (Optional)
+
+function [Xopt,FXopt,details] = SO_X(funct_name,lim,Parameters)
+
+%% Global variables and others
+% global Back ln bg ms lw met fun colors rep sol Pop0
+
+%% LaTex enviroment
+% Back      = 1;      % Back - Background color: White: 0 - Black: 1
+% LaTex_Script
+
+%% Warnings and errors
+warning off
+
+%% Variables tests
+
+
+%% Constants tests
+unconst   = false;
+
+%% Engineering format
+format longeng
+
+% C    = 0; %Set color option (C=0 White - C=1 Black)
+
+%% Function conversion
+if ischar(funct_name) == 1
+     functname      = str2func(funct_name);
+else
+     functname      = funct_name;
+end
+
+%% Algorithm parameters initialization
+N_dim     = size(lim,1);
+
+minval    = lim(:,1);    %Lower limit
+maxval    = lim(:,2);    %Upper limit
+
+if nargin < 3
+     N_spiD      = 25;
+     ThetaD      = pi/8;
+     rD          = 0.95;
+     
+     Max_gen     = 1000;      %Maximum number of generated particles
+     Tol         = 5;         %Precision to stop criterion
+     Msat        = 100;       %Number of iterations without a significant change of the optimal value
+     Epsilon     = 1e-3;      %User precision
+else
+     N_spiD      = Parameters.N_spiD;
+     ThetaD      = Parameters.ThetaD;
+     rD          = Parameters.rD;
+     
+     Max_gen     = Parameters.Max_gen;
+     Tol         = Parameters.Tol;
+     Msat        = Parameters.Msat;
+     Epsilon     = Parameters.Epsilon;
+end
+
+%% Initial time and toplot
+toplot    = [];
+tic
+
+%% Preallocation
+R    = ones(N_dim);
+I    = eye(N_dim);
+
+%% Function definition
+function the_results = evaluate_function(the_function,the_positions)
+     the_results    = nan(N_spiD,1);
+     for s = 1:N_spiD
+          the_results(s)      = the_function(the_positions(s,:));
+     end
+end
+
+%% Rotation matrix
+cmbn    = combnk(1:N_dim,2);  % Possible combinations by 2D plane
+for ij = 1:size(cmbn,1)
+     i           = min(cmbn(ij,:));
+     j           = max(cmbn(ij,:));
+     
+     R_aux       = eye(N_dim);
+     R_aux(i,i)  = cos(ThetaD);
+     R_aux(j,j)  = cos(ThetaD);
+     R_aux(i,j)  = -sin(ThetaD);
+     R_aux(j,i)  = sin(ThetaD);
+     
+     if ij == 1
+          R = R.*R_aux;
+     else
+          R = R*R_aux;
+     end
+end
+S = rD*R;
+
+%% Limits
+% lim         = [min(lim,[],2) max(lim,[],2)];
+bnd_1       = repmat(minval,1,N_spiD);
+bnd_2       = repmat(maxval,1,N_spiD);
+
+%% Random population
+xpop    = bnd_1 + rand(N_dim,N_spiD).*(bnd_2 - bnd_1);
+% xpop      = Pop0';
+
+%% Population plot
+% plot(xpop,'LineStyle','None','Marker','*','MarkerSize',2.5)
+%
+% xlabel('$Agents$')
+% set(gca,'Xlim',[0,N_emp]);
+% % set(gca,'XTick',())
+% set(gca,'XMinorGrid','On');
+% set(gca,'XMinorTick','On');
+%
+% ylabel('$Limits$')
+% set(gca,'Ylim',[min(minval),max(maxval)]);
+% % set(gca,'YTick',());
+% set(gca,'YMinorGrid','On');
+% set(gca,'YMinorTick','On');
+%
+% print(['Population_DSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions'],'-depsc','-r750')
+% print(['Population_DSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions'],'-dpng','-r750')
+% savefig(['Population_DSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions','.fig'])
+
+%% Function evaluation
+fpop      = evaluate_function(functname,xpop');
+
+%% Finest population
+[FXopt,ig]     = min(fpop); 
+Xopt           = xpop(:,ig);
+
+%% Set auxiliar variables
+% FXoptc  = FXopt;
+Xoptc     = 0;
+FXoptc    = 0;
+
+generation   = 1;
+
+msatc1   = 0;
+msatc2   = 0;
+msatc3   = 0;
+msatc4   = 0;
+summ     = 0;       %Temporal mean
+sums     = 0;       %Temporal standard deviation
+
+iteration = 1;
+
+Xopt_p_i(1,:)  = Xopt;
+FXopt_p_i(1,:) = FXopt;
+
+%% Main processing loop
+while (generation <= Max_gen) %&& msatc1 < 0.5*Msat && msatc2 < Msat && msatc3 < 1.5*Msat && msatc4 < 2.0*Msat
+     
+     for i = 1 : N_spiD
+          xpop(:,i)      = S*xpop(:,i) - ((S - I)*Xopt);
+     end
+     
+     if unconst == false
+          check     = xpop < bnd_1; xpop = ~check.*xpop + check.*bnd_1;
+          check     = xpop > bnd_2; xpop = ~check.*xpop + check.*bnd_2;
+     end
+     
+     fpop          = evaluate_function(functname,xpop');
+     
+     temp      = FXopt;
+     
+     [FXopt,ig]     = min(fpop);
+     
+     if FXopt < temp
+          Xopt      = xpop(:,ig);
+     else
+          FXopt     = temp;
+     end
+     
+     iteration      = iteration + 1;
+     
+     Xopt_p_i(iteration,:)    = Xopt;
+     FXopt_p_i(iteration,:)   = FXopt;
+
+     %% Statistical information
+     summ      = summ + FXopt;
+     sums      = sums + FXopt^2;
+     currm     = summ/generation;
+     currs     = sqrt(sums/generation - currm^2);
+     
+     cur = abs(FXopt - currm);
+     
+     %% Increase the generation 
+     generation    = generation + 1;
+     
+     %% Stopping criteria
+     
+     % First
+     if (abs(FXopt - currm) <= (Tol*currs)) %&& (FXopt == temp)
+          msatc1 = msatc1 + 1;
+     else
+          msatc1 = 0;
+     end
+     
+     % Second
+     if (abs(FXopt - currm) <= Epsilon)
+          msatc2 = msatc2 + 1;
+     else
+          msatc2 = 0;
+     end
+     
+     % Third
+     if (abs(FXopt - FXoptc) <= Epsilon^2)
+          msatc3 = msatc3 + 1;
+     else
+          msatc3 = 0;
+     end
+     
+     %% Fourth
+     
+     if (max(abs((Xopt - Xoptc)./Xopt)) <= Epsilon^3)
+          msatc4 = msatc4 + 1;
+     else
+          msatc4 = 0;
+     end
+     
+     Xoptc     = Xopt;
+     FXoptc    = FXopt;
+     
+     %Stagnation
+     if generation <= Max_gen
+          outmsg = 1;
+          
+     else
+          outmsg = 0;
+          
+     end
+   
+     %% Final time and toplot
+     t    = toc;
+
+     details = struct('time',t,'fevs',generation*(N_spiD + 1),'steps',iteration,'outmsg',outmsg,'favg',currm,'fstd',currs,'Xopt_p_i',Xopt_p_i(:,:),'FXopt_p_i',FXopt_p_i(:,:));
+
+     toplot = [toplot; [generation,FXopt,Xopt',currm,currs]];
+     
+     %% Save session
+     % save UPSOA.mat
+     
+end
+
+Xopt = Xopt';
+
+end
+
+%%
+%Parameters
+
+%Parameters = struct('N_spiD',25,'rD',0.95,'ThetaD',0.3927,'Max_gen',1000,'Tol',5,'Msat',100,'Epsilon',1e-3);
+
+%%
+%**************************************************************************************************
+%Reference:  Tamura, K., & Yasuda, K. (2011, October).
+%            Spiral optimization-A new multipoint search method.
+%            In 2011 IEEE International Conference on Systems, Man, and Cybernetics (pp. 1759-1764). IEEE.
+%
+%**************************************************************************************************
+
+%Any observations or/and suggestions for improvement of this code send to
+%David Matajira at this email address: david.matajira@ugto.mx
+%Your contribution to improving this code will be acknowledged in
+%revision section in this script and in the MatLab web page of the
+%File Exchange - MATLAB Central - MathWorks
