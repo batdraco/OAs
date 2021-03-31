@@ -1,0 +1,157 @@
+%% Simulated Annealing Optimization Algorithm (SAOA)
+% Jorge Mario Cruz Duarte, B.Eng, M.Sc, D.Eng
+% Universidad Industrial de Santander - UIS
+% Escuela de Ingenierias Electrica, Electronica y de Telecomunicaciones
+% Bucaramanga - Santander - Colombia
+% October - 2012 - Last revision: October - 2019
+% Functions: None
+% Subfunctions: None
+% Required *.m-files: None
+% Required *.mat-files: Parameters (Optional)
+
+function [XBest,fBest,details] = SA_X(fObj,bnd,parameters)
+
+% Read parameters
+if nargin < 3,
+    T       = 1400;
+    alpha   = 0.6;
+    k       = 1;
+    n       = 100;
+    
+    Tol     = 5;
+    m       = 1000;
+    msat    = 100;
+else
+    T       = parameters.T;
+    alpha   = parameters.ALPHA;
+    k       = parameters.K;
+    n       = parameters.MSTP;
+    
+    Tol     = parameters.Tol;
+    m       = parameters.MITE;
+    msat    = parameters.Msat;
+end
+
+% Dimensions
+Nd      = size(bnd,1);
+
+% Initial vector and its function value
+bnd     = [min(bnd,[],2) max(bnd,[],2)];
+bli(1,:) = bnd(:,1); bdif(1,:) = bnd(:,2)' - bli;
+X = bli + rand(1,Nd).*bdif;
+
+f       = fObj(X);
+
+% Set auxiliar variables
+fBest   = inf;
+cycles  = 1;
+cr  	= 0;
+msr     = 0;
+msatc   = 0;
+
+% Statistical variables
+sumAVG  = 0;
+sumSD   = 0;
+
+% Plot objective function value evolution
+% topl = [];
+
+%% Main process
+tic,
+while cycles <= m && msatc < msat,
+    for i = 1 : n,
+        
+        % Update auxiliar variables
+        X_      = X;
+        f_      = f;
+        
+        % Take a neighbour point
+        X       = X_ + randn(1,Nd)/100;
+        
+        % Check if the point is in search space
+        for d = 1 : Nd,
+            if X(1,d) < bnd(d,1) || X(1,d) > bnd(d,2),
+                X(1,d) = bli(d) + rand*bdif(d);
+            end
+        end
+        
+        % Evaluate objective function in the new point
+        f       = fObj(X);
+        
+        % Calculate the difference between objective functions values
+        Df      = f - f_;
+        
+        % Check the reject condition
+        if Df > 0 && rand > exp(-Df/(k*T)),
+            X = X_; f = f_;
+            cr  = cr + 1;
+        else
+            % Update max number of sequential rejects
+            if cr > msr,
+                msr = cr;
+            end
+            cr  = 0;
+        end
+    end
+    
+    % Save if f is a better solution
+    fBest_ = fBest;
+    if f < fBest, fBest = f; XBest = X; end
+    
+    % Statistical block
+    sumAVG      = sumAVG + fBest;
+    sumSD       = sumSD + fBest^2;
+    currAVG     = sumAVG/cycles;
+    currSD      = sqrt(sumSD/cycles - currAVG^2);
+    
+    % Steop criteria
+    if fBest > currAVG -  Tol*currSD && fBest == fBest_,
+        msatc = msatc + 1;
+    else
+        msatc = 0;
+    end
+    
+    % Update cycles and Temperature value
+    cycles      = cycles + 1;
+    T           = alpha*T;       
+    
+%     topl        = [topl; [cycles,fBest,currAVG,currSD]];
+end
+t       = toc;
+
+% Define the output message
+if cycles <= m, outmsg = 1;
+else            outmsg = 0;
+end
+
+% Create de final structure with details
+details = struct('time',t,'fevs',cycles*n + 1,'steps',cycles,'Tfinal',T,...              ...
+    'outmsg',outmsg,'favg',currAVG,'fstd',currSD);
+
+    T       = 1400;
+    alpha   = 0.6;
+    k       = 1;
+    n       = 100;
+    
+    Tol     = 5;
+    m       = 1000;
+    msat    = 100;
+
+%%
+%Parameters
+
+%Parameters = struct('T',1400,'alpha',0.6,'k',1,'n',100,'Max_gen',1000,'Tol',5,'Msat',100,'Epsilon',1e-3);
+
+%%
+%**************************************************************************************************
+%Reference:  Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983).
+%            Optimization by simulated annealing.
+%            science, 220(4598), 671-680.
+%
+%**************************************************************************************************
+
+%Any observations or/and suggestions for improvement of this code send to
+%David Matajira at this email address: david.matajira@ugto.mx
+%Your contribution to improving this code will be acknowledged in
+%revision section in this script and in the MatLab web page of the
+%File Exchange - MATLAB Central - MathWorks
