@@ -1,0 +1,248 @@
+%% Differential Evolution Optimization Algorithm (DEOA)
+% David Matajira Rueda, B.Eng, M.Eng, D.Eng(c)
+% Universidad de Guanajuato - UG
+% Division de Ingenierias Campus Irapuato-Salamanca - DICIS
+% Salamanca - Guanajuato - Mexico
+% January - 2018 - Last revision: October - 2019
+% Functions: None
+% Subfunctions: None
+% Required *.m-files: None
+% Required *.mat-files: Parameters (Optional)
+
+function [Xopt,FXopt,details] = DE_X(funct_name,lim,Parameters)
+
+%% Global variables and others
+% global Back ln bg ms lw met fun colors rep sol Pop0
+
+%% LaTex enviroment
+% Back      = 1;      % Back - Background color: White: 0 - Black: 1
+% LaTex_Script
+
+%% Warnings and errors
+warning off
+
+%% Variables Tests
+
+
+%% Constants tests
+
+
+%% Engineering format
+format longeng
+
+% C    = 0; %Set color option (C=0 White - C=1 Black)
+
+%% Function conversion
+if ischar(funct_name) == 1
+     functname      = str2func(funct_name);
+else
+     functname      = funct_name;
+end
+
+%% Algorithm parameters initialization
+
+N_dim     = size(lim,1);
+
+minval    = lim(:,1);  %Lower limit
+maxval    = lim(:,2);  %Upper limit
+
+if nargin < 3
+     N_pop       = 25;        % Population size
+     Cp          = 0.7;       % Crossover probability
+     Dw          = 0.6;       % Differential weight
+     
+     Max_gen     = 1000;      % Maximum number of iterations
+     Tol         = 5;         % Precision to stopping criterion
+     Msat        = 100;       % Number of iterations without a significant change of the optimal value
+     Epsilon     = 1e-3;      % User precision
+else
+     N_pop       = Parameters.N_pop;
+     Cp          = Parameters.Cp;
+     Dw          = Parameters.Dw;
+     
+     Max_gen     = Parameters.Max_gen;
+     Tol         = Parameters.Tol;
+     Msat        = Parameters.Msat;
+     Epsilon     = Parameters.Epsilon;
+end
+
+%% Initial time and toplot
+toplot = [];
+tic
+
+%% Random population
+xpop      = ((minval*ones(1,N_pop)) + (maxval - minval).*rand(N_dim,N_pop))';
+% xpop    = Pop0;
+
+%% Population plot
+% plot(xpop,'LineStyle','None','Marker','*','MarkerSize',2.5)
+%
+% xlabel('$Agents$')
+% set(gca,'Xlim',[0,N_emp]);
+% % set(gca,'XTick',())
+% set(gca,'XMinorGrid','On');
+% set(gca,'XMinorTick','On');
+%
+% ylabel('$Limits$')
+% set(gca,'Ylim',[min(minval),max(maxval)]);
+% % set(gca,'YTick',());
+% set(gca,'YMinorGrid','On');
+% set(gca,'YMinorTick','On');
+%
+% print(['Population_UPSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions'],'-depsc','-r750')
+% print(['Population_UPSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions'],'-dpng','-r750')
+% savefig(['Population_UPSO_',num2str(N_emp),'agents_',num2str(N_dim),'dimensions','.fig'])
+
+%% Function evaluation
+for i = 1 : N_pop
+     fpop(1,i)      = feval(functname,xpop(i,:));
+end
+
+%% Finest population
+[FXopt,ig]    = min(fpop);
+
+% generation     = N_pop;
+
+%% Set auxiliar variables
+Xoptc    = 0;
+FXoptc   = 0;
+
+generation     = 1;
+
+msatc1   = 0;
+msatc2   = 0;
+msatc3   = 0;
+msatc4   = 0;
+summ     = 0;
+sums     = 0;
+
+iteration      = 1;
+
+Xopt_p_i(1,:)       = xpop(ig,:);
+FXopt_p_i(1,:)      = FXopt;
+
+%% Main processing loop
+while (generation < Max_gen) %&& msatc1 < 0.5*Msat && msatc2 < Msat && msatc3 < 1.5*Msat && msatc4 < 2.0*Msat
+     
+     indices   = randperm(N_pop);
+     i    = indices(1);
+     a    = indices(2);
+     b    = indices(3);
+     c    = indices(4);
+     
+     R    = ceil(N_dim*rand(1,1));
+     
+     xtemp     = xpop(i,:);
+     
+     %% Mutation and crossover
+     for j = 1:N_dim
+          if (j==R) || (rand(1,1) < Cp)
+               xtemp(j)  = xpop(a,j) + Dw*(xpop(b,j) - xpop(c,j));
+          end
+     end
+     
+     xtemp     = min((maxval'),max((minval'),xtemp));
+     
+     ftemp     = feval(funct_name,xtemp);
+     
+     %% Selection
+     if (ftemp < fpop(1,i))
+          fpop(1,i)      = ftemp;
+          xpop(i,:)      = xtemp;
+          if ftemp < FXopt
+               FXopt     = ftemp;
+               ig        = i;
+          end
+     end
+     
+     iteration      = iteration + 1;
+     
+     Xopt    = xpop(ig,:);
+     
+     Xopt_p_i(iteration,:)  = Xopt;
+     FXopt_p_i(iteration,:) = FXopt;
+     
+     %% Statistical information
+     summ      = summ + FXopt;
+     sums      = sums + FXopt^2;
+     currm     = summ/generation;
+     currs     = sqrt(sums/generation - currm^2);
+     
+     cur = abs(FXopt - currm);
+     
+     %% Increase the generation
+     generation     = generation + 1;
+     
+     %% Stopping criteria
+     
+     % First
+     if (abs(FXopt - currm) <= (Tol*currs)) %&& (FXopt == temp)
+          msatc1 = msatc1 + 1;
+     else
+          msatc1 = 0;
+     end
+     
+     % Second
+     if (abs(FXopt - currm) <= Epsilon)
+          msatc2 = msatc2 + 1;
+     else
+          msatc2 = 0;
+     end
+     
+     % Third
+     if (abs(FXopt - FXoptc) <= Epsilon^2)
+          msatc3 = msatc3 + 1;
+     else
+          msatc3 = 0;
+     end
+     
+     %% Fourth
+     
+     if (max(abs((Xopt - Xoptc)./Xopt)) <= Epsilon^3)
+          msatc4 = msatc4 + 1;
+     else
+          msatc4 = 0;
+     end
+     
+     Xoptc     = Xopt;
+     FXoptc    = FXopt;
+     
+     %Stagnation
+     if generation <= Max_gen
+          outmsg = 1;
+          
+     else
+          outmsg = 0;
+          
+     end
+     
+     %% Final time and toplot
+     t = toc;
+     
+     details = struct('time',t,'fevs',(N_pop + 1)*generation,'steps',iteration,'outmsg',outmsg,'favg',currm,'fstd',currs,'Xopt_p_i',Xopt_p_i(:,:),'FXopt_p_i',FXopt_p_i(:,:),'msat',[msatc1,msatc2,msatc3,msatc4]);
+     
+     toplot = [toplot; [generation,FXopt,Xopt,currm,currs]];
+     
+     %% Save session
+     % save DEOA.mat
+     
+end
+
+%%
+%Parameters
+
+%Parameters = struct('N_pop',25,'Cp',0.7,'Dw',0.6,'Max_gen',1000,'Tol',5,'Msat',100,'Epsilon',1e-3);
+
+%%
+%**************************************************************************************************
+%Reference:  Storn, R., & Price, K. (1997).
+%            Differential evolution–a simple and efficient heuristic for global optimization over continuous spaces.
+%            Journal of global optimization, 11(4), 341-359.
+%
+%**************************************************************************************************
+
+%Any observations or/and suggestions for improvement of this code send to
+%David Matajira at this email address: david.matajira@ugto.mx
+%Your contribution to improving this code will be acknowledged in
+%revision section in this script and in the MatLab web page of the
+%File Exchange - MATLAB Central - MathWorks
